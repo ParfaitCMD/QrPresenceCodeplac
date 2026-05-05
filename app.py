@@ -1,11 +1,17 @@
 import streamlit as st
 from supabase import create_client
+import os
 
-# --- CONFIGURAÇÕES DO SUPABASE ---
-# Pegue esses dados em: Settings > API
-URL = "https://nrvshjkwlfmskzgorzxq.supabase.co"
-KEY = "sb_publishable_dRq1Kp9Q3WT0N34B0kmK9w_YWvx6jPi"
-supabase = create_client(URL, KEY)
+# --- CONFIGURAÇÕES DE SEGURANÇA ---
+# O os.getenv vai buscar as chaves que vamos cadastrar no painel do Render
+URL = os.getenv("SUPABASE_URL")
+KEY = os.getenv("SUPABASE_KEY")
+
+# Só cria o cliente se as chaves existirem (evita erro no deploy)
+if URL and KEY:
+    supabase = create_client(URL, KEY)
+else:
+    st.error("Erro: Chaves de API não configuradas.")
 
 # --- PADRONIZAÇÃO DOS DADOS ---
 CURSOS = [
@@ -19,6 +25,14 @@ SEMESTRES = [f"{i}º Semestre" for i in range(1, 9)]
 
 # --- INTERFACE ---
 st.set_page_config(page_title="Check-in Tech Uniceplac", page_icon="💻")
+# Esconde o menu, o cabeçalho e o rodapé para ficar limpo
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
 # Como você é designer, aqui você pode colocar o link de uma imagem/logo
 st.title("📝 Registro de Presença")
