@@ -8,13 +8,13 @@ from streamlit_js_eval import get_geolocation
 # --- CONFIGURAÇÕES DE SEGURANÇA ---
 URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_KEY")
-# Variável para você testar de casa (Crie no Render como 'LIGADO' ou 'DESLIGADO')
+# No Render, defina como "LIGADO" para testar em casa ou "DESLIGADO" para o evento
 MODO_TESTE = os.getenv("MODO_TESTE", "DESLIGADO")
 
 if URL and KEY:
     supabase = create_client(URL, KEY)
 else:
-    st.error("Erro: Chaves de API não configuradas.")
+    st.error("Erro: Chaves de API não configuradas no ambiente.")
 
 # --- COORDENADAS UNICEPLAC (GAMA) ---
 LAT_FACULDADE = -16.00122196328053
@@ -24,7 +24,7 @@ RAIO_PERMITIDO_KM = 0.5  # 500 metros de tolerância
 
 # --- FUNÇÕES AUXILIARES ---
 def calcular_distancia(lat1, lon1, lat2, lon2):
-    R = 6371
+    R = 6371  # Raio da Terra em KM
     dLat = math.radians(lat2 - lat1)
     dLon = math.radians(lon2 - lon1)
     a = (
@@ -52,7 +52,7 @@ CURSOS = [
 ]
 SEMESTRES = [f"{i}º Semestre" for i in range(1, 9)]
 
-# --- INTERFACE E ESTILO ---
+# --- INTERFACE E ESTILIZAÇÃO CODEPLAC ---
 st.set_page_config(page_title="Check-in Codeplac", page_icon="💻", layout="centered")
 
 st.markdown(
@@ -100,77 +100,75 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown("<div class='title-underline'></div>", unsafe_allow_html=True)
-st.markdown(
-    "<p style='text-align: center; color: #00d4ff;'>Área de Tecnologia - Uniceplac</p>",
-    unsafe_allow_html=True,
-)
 
-# --- LÓGICA DE GEOLOCALIZAÇÃO ---
-loc = get_geolocation()
-
-if loc or MODO_TESTE == "LIGADO":
-    distancia = 0
-    autorizado = True
-
-    if MODO_TESTE == "DESLIGADO":
-        lat_aluno = loc["coords"]["latitude"]
-        lon_aluno = loc["coords"]["longitude"]
-        distancia = calcular_distancia(
-            lat_aluno, lon_aluno, LAT_FACULDADE, LON_FACULDADE
-        )
-        if distancia > RAIO_PERMITIDO_KM:
-            autorizado = False
-
-    if autorizado:
-        if MODO_TESTE == "LIGADO":
-            st.info("🛠️ Modo Teste Ativado: Localização ignorada.")
-
-        with st.form("form_registro", clear_on_submit=True):
-            nome = st.text_input("NOME COMPLETO")
-            cpf_input = st.text_input("CPF (APENAS NÚMEROS)", max_chars=11)
-
-            col1, col2 = st.columns(2)
-            with col1:
-                curso = st.selectbox("CURSO", CURSOS)
-                periodo = st.selectbox("PERÍODO", ["Matutino", "Noturno"])
-            with col2:
-                semestre = st.selectbox("SEMESTRE", SEMESTRES)
-                turma = st.text_input("TURMA (OPCIONAL)")
-
-            botao = st.form_submit_button("REGISTRAR PRESENÇA")
-
-            if botao:
-                cpf_limpo = formatar_cpf(cpf_input)
-                if not nome or not cpf_input:
-                    st.warning("Preencha todos os campos obrigatórios!")
-                elif not cpf_limpo:
-                    st.error("CPF Inválido!")
-                else:
-                    try:
-                        dados = {
-                            "nome_completo": nome.strip().upper(),
-                            "cpf": cpf_limpo,
-                            "curso": curso,
-                            "semestre": semestre,
-                            "turma": turma.strip().upper() if turma else "N/A",
-                            "periodo": periodo,
-                        }
-                        supabase.table("presencas").insert(dados).execute()
-                        st.success(
-                            f"Sucesso! Presença confirmada para {nome.split()[0]}."
-                        )
-                        st.balloons()
-                    except Exception as e:
-                        if "unique_cpf_dia_tech" in str(e) or "23505" in str(e):
-                            st.error("⚠️ CPF já registrado hoje!")
-                        else:
-                            st.error(f"Erro no sistema: {e}")
-    else:
-        st.error(f"❌ Acesso Negado. Você está a {distancia:.2f} km da faculdade.")
-        st.info(
-            "Para registrar presença, você deve estar nas dependências do Uniceplac."
-        )
-else:
-    st.warning(
-        "📍 Detectando sua localização... Por favor, permita o acesso ao GPS no seu navegador."
+# --- LÓGICA DE GEOLOCALIZAÇÃO OBRIGATÓRIA ---
+if MODO_TESTE == "DESLIGADO":
+    st.markdown(
+        "<p style='text-align: center; color: #00d4ff;'>📍 Verificando localização para liberar acesso...</p>",
+        unsafe_allow_html=True,
     )
+    loc = get_geolocation()
+
+    if not loc:
+        st.warning(
+            "Aguardando permissão de GPS. Se o navegador não perguntar, clique no cadeado ao lado da URL e permita a localização."
+        )
+        if st.button("🔄 TENTAR NOVAMENTE"):
+            st.rerun()
+        st.stop()  # Bloqueia o formulário
+
+    # Se capturou a localização
+    lat_aluno = loc["coords"]["latitude"]
+    lon_aluno = loc["coords"]["longitude"]
+    distancia = calcular_distancia(lat_aluno, lon_aluno, LAT_FACULDADE, LON_FACULDADE)
+
+    if distancia > RAIO_PERMITIDO_KM:
+        st.error(f"❌ Acesso Negado. Você está a {distancia:.2f} km da faculdade.")
+        st.info("Para registrar presença, você deve estar fisicamente no Uniceplac.")
+        st.stop()  # Bloqueia o formulário
+    else:
+        st.success("✅ Localização confirmada! Formulário liberado.")
+
+else:
+    st.info("🛠️ Modo Teste Ativado: Localização ignorada.")
+
+# --- FORMULÁRIO DE REGISTRO ---
+with st.form("form_registro", clear_on_submit=True):
+    nome = st.text_input("NOME COMPLETO")
+    cpf_input = st.text_input("CPF (APENAS OS 11 NÚMEROS)", max_chars=11)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        curso = st.selectbox("CURSO", CURSOS)
+        periodo = st.selectbox("PERÍODO", ["Matutino", "Noturno"])
+    with col2:
+        semestre = st.selectbox("SEMESTRE", SEMESTRES)
+        turma = st.text_input("TURMA (OPCIONAL)")
+
+    botao = st.form_submit_button("REGISTRAR PRESENÇA")
+
+    if botao:
+        cpf_limpo = formatar_cpf(cpf_input)
+
+        if not nome or not cpf_input:
+            st.warning("Por favor, preencha o Nome e o CPF!")
+        elif not cpf_limpo:
+            st.error("CPF Inválido! Digite exatamente os 11 números.")
+        else:
+            try:
+                dados = {
+                    "nome_completo": nome.strip().upper(),
+                    "cpf": cpf_limpo,
+                    "curso": curso,
+                    "semestre": semestre,
+                    "turma": turma.strip().upper() if turma else "N/A",
+                    "periodo": periodo,
+                }
+                supabase.table("presencas").insert(dados).execute()
+                st.success(f"Tudo certo, {nome.split()[0]}! Presença registrada.")
+                st.balloons()
+            except Exception as e:
+                if "unique_cpf_dia_tech" in str(e) or "23505" in str(e):
+                    st.error("⚠️ Você já registrou presença hoje!")
+                else:
+                    st.error(f"Erro no sistema: {e}")
