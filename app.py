@@ -53,7 +53,7 @@ with st.form("form_registro", clear_on_submit=True):
                     "periodo": periodo,
                 }
 
-                supabase.table("presencas_tech").insert(dados).execute()
+                supabase.table("presencas").insert(dados).execute()
                 st.success(f"Tudo certo, {nome.split()[0]}! Presença registrada.")
                 st.balloons()
             except Exception as e:
